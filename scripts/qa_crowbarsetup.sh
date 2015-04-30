@@ -1779,6 +1779,7 @@ function custom_configuration()
             proposal_set_value ipmi default "['attributes']['ipmi']['bmc_enable']" true
         ;;
         keystone)
+            proposal_set_value keystone default "['attributes']['keystone']['admin']['password']" "'c%r&ow\$b\\\"ar'"
             # set a custom region name
             if iscloudver 4plus ; then
                 proposal_set_value keystone default "['attributes']['keystone']['api']['region']" "'CustomRegion'"

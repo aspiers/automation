@@ -132,7 +132,7 @@ declare -a crowbar_repos=(
 
 for repo in ${crowbar_repos[@]}; do
     for github_pr in $($ghs -r crowbar/$repo -a $action); do
-        ./crowbar-testbuild.py $repo $github_pr
+        ./crowbar-testbuild.py $repo ${github_pr//:/ }
     done
 done
 

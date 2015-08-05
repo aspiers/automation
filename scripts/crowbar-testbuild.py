@@ -50,18 +50,18 @@ iosc = functools.partial(
     Command('/usr/bin/osc'), '-A', 'https://api.suse.de')
 
 
-def ghs_set_status(repo, pr_id, head_sha1, status):
+def ghs_set_status(org, repo, pr_id, head_sha1, status):
     ghs = Command(
         os.path.abspath(
             os.path.join(os.path.dirname(sys.argv[0]),
                          'github-status/github-status.rb')))
 
-    ghs('-r', 'crowbar/' + repo,
+    ghs('-r', org + '/' + repo,
         '-p', pr_id, '-c', head_sha1, '-a', 'set-status',
         '-s', status)
 
 
-def jenkins_job_trigger(repo, github_opts, cloudsource, ptfdir):
+def jenkins_job_trigger(org, repo, pr_id, sha1, cloudsource, ptfdir):
     print("triggering jenkins job with " + htdocs_url + ptfdir)
 
     jenkins = Command(
@@ -80,7 +80,7 @@ def jenkins_job_trigger(repo, github_opts, cloudsource, ptfdir):
     print(jenkins(
         'openstack-mkcloud',
         '-p', 'mode=standard',
-        "github_pr=crowbar/%s:%s" % (repo, github_opts),
+        "github_pr=%s/%s:%s:%s" % (org, repo, pr_id, sha1),
         "cloudsource=" + cloudsource,
         'label=openstack-mkcloud-SLE12',
         'UPDATEREPOS=' + htdocs_url + ptfdir,
@@ -88,10 +88,10 @@ def jenkins_job_trigger(repo, github_opts, cloudsource, ptfdir):
         *job_parameters))
 
 
-def add_pr_to_checkout(repo, pr_id, spec):
+def add_pr_to_checkout(org, repo, pr_id, spec):
     sh.curl(
         '-s', '-k', '-L',
-        "https://github.com/crowbar/%s/pull/%s.patch" % (repo, pr_id),
+        "https://github.com/%s/%s/pull/%s.patch" % (org, repo, pr_id),
         '-o', 'prtest.patch')
     sh.sed('-i', '-e', 's,Url:.*,%define _default_patch_fuzz 2,',
            '-e', 's,%patch[0-36-9].*,,', spec)
@@ -99,11 +99,11 @@ def add_pr_to_checkout(repo, pr_id, spec):
     iosc('vc', '-m', " added PR test patch from %s/%s" % (repo, pr_id))
 
 
-def prep_osc_dir(workdir, repo, pr_id, pr_branch, pkg, spec):
+def prep_osc_dir(workdir, org, repo, pr_id, pr_branch, pkg, spec):
     os.chdir(workdir)
     iosc('co', IBS_MAPPING[pr_branch], pkg)
     os.chdir(os.path.join(IBS_MAPPING[pr_branch], pkg))
-    add_pr_to_checkout(repo, pr_id, spec)
+    add_pr_to_checkout(org, repo, pr_id, spec)
 
 
 def build_package(spec, webroot, olddir):
@@ -129,42 +129,50 @@ def build_package(spec, webroot, olddir):
             shutil.copy2(log, os.path.join(webroot, 'build.log'))
 
 
-def trigger_testbuild(repo, github_opts):
-    pr_id, head_sha1, pr_branch = github_opts.split(':')
-
+def trigger_testbuild(args):
     olddir = os.getcwd()
     workdir = tempfile.mkdtemp()
     build_failed = False
     try:
-        ptfdir = repo + ':' + github_opts
+        ptfdir = ':'.join([args.repo, args.pr_id, args.sha1, args.branch])
         webroot = os.path.join(htdocs_dir, ptfdir)
-        pkg = repo if repo == "crowbar" else "crowbar-" + repo
+        pkg = args.repo if args.repo == "crowbar" else "crowbar-" + args.repo
         spec = pkg + '.spec'
 
         shutil.rmtree('-rf', webroot)
         if not os.path.isdir(webroot):
             os.makedirs(webroot)
 
-        prep_osc_dir(workdir, repo, pr_id, pr_branch, pkg, spec)
+        prep_osc_dir(workdir, args.org, args.repo, args.pr_id, args.branch,
+                     pkg, spec)
         build_package(spec, webroot, olddir)
     finally:
         sh.sudo.rm('-rf', workdir)
 
     if not build_failed:
         jenkins_job_trigger(
-            repo, github_opts, CLOUDSRC[pr_branch], ptfdir)
+            args.org, args.repo, args.pr_id, args.sha1,
+            CLOUDSRC[args.branch], ptfdir)
 
     ghs_set_status(
-        repo, pr_id, head_sha1,
+        args.org, args.repo, args.pr_id, args.sha1,
         'failure' if build_failed else'pending')
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Test a crowbar/ PR')
-    parser.add_argument("repo", help='github ORG/REPO')
-    parser.add_argument('pr', help='github PR <PRID>:<SHA1>:<BRANCH>')
+    parser = argparse.ArgumentParser(description='Test a github pull request')
+    parser.add_argument("org",    metavar='ORG',
+                        help='github organization name')
+    parser.add_argument("repo",   metavar='REPO',
+                        help='github repository name')
+    parser.add_argument('pr_id',  metavar='PR-ID',
+                        help='github PR id')
+    parser.add_argument('sha1',   metavar='SHA1',
+                        help='SHA1 head of PR')
+    parser.add_argument('branch', metavar='BRANCH',
+                        help='destination branch of PR')
 
     args = parser.parse_args()
 
-    trigger_testbuild(args.repo, args.pr)
+    trigger_testbuild(args)
     sys.exit(0)

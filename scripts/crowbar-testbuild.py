@@ -19,6 +19,7 @@
 import argparse
 import functools
 import os
+import shutil
 import sys
 import tempfile
 
@@ -125,7 +126,7 @@ def build_package(spec, webroot, olddir):
         os.chdir(olddir)
         log = os.path.join(buildroot, '.build.log')
         if os.path.exists(log):
-            sh.cp('-p', log, os.path.join(webroot, 'build.log'))
+            shutil.copy2(log, os.path.join(webroot, 'build.log'))
 
 
 def trigger_testbuild(repo, github_opts):
@@ -140,8 +141,9 @@ def trigger_testbuild(repo, github_opts):
         pkg = repo if repo == "crowbar" else "crowbar-" + repo
         spec = pkg + '.spec'
 
-        sh.rm('-rf', webroot)
-        sh.mkdir('-p', webroot)
+        shutil.rmtree('-rf', webroot)
+        if not os.path.isdir(webroot):
+            os.makedirs(webroot)
 
         prep_osc_dir(workdir, repo, pr_id, pr_branch, pkg, spec)
         build_package(spec, webroot, olddir)

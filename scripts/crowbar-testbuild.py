@@ -98,6 +98,36 @@ def add_pr_to_checkout(repo, pr_id, spec):
     iosc('vc', '-m', " added PR test patch from %s/%s" % (repo, pr_id))
 
 
+def prep_osc_dir(workdir, repo, pr_id, pr_branch, pkg, spec):
+    os.chdir(workdir)
+    iosc('co', IBS_MAPPING[pr_branch], pkg)
+    os.chdir(os.path.join(IBS_MAPPING[pr_branch], pkg))
+    add_pr_to_checkout(repo, pr_id, spec)
+
+
+def build_package(spec, webroot, olddir):
+    buildroot = os.path.join(os.getcwd(), 'BUILD')
+
+    try:
+        iosc('build', '--root', buildroot,
+             '--noverify', '--noservice', 'SLE_11_SP3', 'x86_64',
+             spec, _out=sys.stdout)
+    except:
+        build_failed = True
+        print("Build failed: " + str(sys.exc_info()[0]))
+        raise
+    else:
+        sh.cp('-p',
+              sh.glob(os.path.join(buildroot,
+                                   'usr/src/packages/RPMS/*/*.rpm')),
+              webroot)
+    finally:
+        os.chdir(olddir)
+        log = os.path.join(buildroot, '.build.log')
+        if os.path.exists(log):
+            sh.cp('-p', log, os.path.join(webroot, 'build.log'))
+
+
 def trigger_testbuild(repo, github_opts):
     pr_id, head_sha1, pr_branch = github_opts.split(':')
 
@@ -113,29 +143,8 @@ def trigger_testbuild(repo, github_opts):
         sh.rm('-rf', webroot)
         sh.mkdir('-p', webroot)
 
-        try:
-            os.chdir(workdir)
-            buildroot = os.path.join(os.getcwd(), 'BUILD')
-            iosc('co', IBS_MAPPING[pr_branch], pkg)
-            os.chdir(os.path.join(IBS_MAPPING[pr_branch], pkg))
-            add_pr_to_checkout(repo, pr_id, spec)
-            iosc('build', '--root', buildroot,
-                 '--noverify', '--noservice', 'SLE_11_SP3', 'x86_64',
-                 spec, _out=sys.stdout)
-        except:
-            build_failed = True
-            print("Build failed: " + str(sys.exc_info()[0]))
-            raise
-        else:
-            sh.cp('-p',
-                  sh.glob(os.path.join(buildroot,
-                                       'usr/src/packages/RPMS/*/*.rpm')),
-                  webroot)
-        finally:
-            os.chdir(olddir)
-            log = os.path.join(buildroot, '.build.log')
-            if os.path.exists(log):
-                sh.cp('-p', log, os.path.join(webroot, 'build.log'))
+        prep_osc_dir(workdir, repo, pr_id, pr_branch, pkg, spec)
+        build_package(spec, webroot, olddir)
     finally:
         sh.sudo.rm('-rf', workdir)
 

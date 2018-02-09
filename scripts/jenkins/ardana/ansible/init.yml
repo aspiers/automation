@@ -14,10 +14,11 @@
     ARDANA_INIT_AUTO: 1
 
   tasks:
-  - name: Write deployer info to /etc/motd
+  - name: Write deployer IP and stack info to /etc/motd
     become: yes
     shell: |
-      echo "DEPLOYER_IP={{ deployer_floating_ip | default(None) }}" > /etc/motd
+      echo "DEPLOYER_IP={{ deployer_floating_ip | default(None) }}" >> /etc/motd
+      echo "STACK_NAME={{ stack_name | default(None) }}" >> /etc/motd
 
   - name: Grow 1st partition filesystem
     become: yes

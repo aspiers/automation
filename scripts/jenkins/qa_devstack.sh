@@ -115,12 +115,18 @@ function h_setup_extra_disk {
 }
 
 function h_setup_devstack {
-    if [[ $DIST_VERSION == 12-SP3 ]]; then
+    if [[ $DIST_VERSION == 12-SP[34] ]]; then
         $zypper --no-gpg-checks in http://download.opensuse.org/repositories/openSUSE:/Leap:/42.3/standard/noarch/git-review-1.25.0-6.2.noarch.rpm
     fi
     $zypper in git-core which ca-certificates-mozilla net-tools git-review
     if ! getent group nobody >/dev/null; then
         $zypper in 'group(nogroup)'
+    fi
+
+    if ! modinfo openvswitch >/dev/null; then
+        echo "openvswitch kernel module is not available; maybe you are" \
+             "running a -base kernel?  Aborting." >&2
+        exit 1
     fi
 
     if ! [ -e $DEVSTACK_DIR ]; then
